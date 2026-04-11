@@ -1,0 +1,11 @@
+[package]
+name = "pong-mq"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+macroquad = "0.4"
+
+[features]
+default = ["audio"]
+audio = ["macroquad/audio"]

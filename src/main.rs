@@ -175,7 +175,7 @@ async fn main() {
         
         // Подсказки + индикатор режима
         if score.winner().is_none() {
-            draw_text_ex("W/S — Left | ↑/↓ — Right | Esc — Quit | F11 — Fullscreen", 
+            draw_text_ex("W/S - Left | Up/Down - Right | Esc - Quit | F11 - Fullscreen", 
                         10.0,
                         screen_height() - 25.0, 
                         TextParams { font_size: 14, color: GRAY, ..Default::default() });

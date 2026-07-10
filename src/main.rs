@@ -1,5 +1,9 @@
+// main.rs
+mod neirachain;
+
 use macroquad::prelude::*;
 use macroquad::camera::Camera2D;
+use neirachain::{predict_ball_y, update_ai_paddle};
 
 // === Константы ===
 const WINDOW_W: f32 = 640.;
@@ -8,6 +12,13 @@ const PADDLE_W: f32 = 15.;
 const PADDLE_H: f32 = 80.;
 const BALL_S: f32 = 15.;
 const WINNING_SCORE: i32 = 5;
+
+// === Режим игры ===
+#[derive(Clone, Copy, PartialEq)]
+enum GameMode {
+    HumanVsHuman,
+    HumanVsAI,
+}
 
 // === Счёт ===
 struct Score {
@@ -46,6 +57,8 @@ impl Effects {
 
 #[macroquad::main("Pong")]
 async fn main() {
+    let mut game_mode: Option<GameMode> = None;
+    
     let mut left_y = (WINDOW_H - PADDLE_H) / 2.;
     let mut right_y = (WINDOW_H - PADDLE_H) / 2.;
     let mut ball_x = WINDOW_W / 2.;
@@ -56,12 +69,65 @@ async fn main() {
     let mut score = Score::new();
     let mut effects = Effects::new();
     let mut is_fullscreen = false;
-
     
     // Счётчик кадров для "псевдо-рандома"
     let mut frame_counter: u64 = 0;
     
     loop {
+        // === ЭКРАН ВЫБОРА РЕЖИМА ===
+        if game_mode.is_none() {
+            clear_background(BLACK);
+            set_default_camera();
+            
+            draw_text_ex(
+                "PONG",
+                screen_width() / 2. - 60.,
+                screen_height() / 2. - 100.,
+                TextParams { font_size: 48, color: WHITE, ..Default::default() }
+            );
+            
+            draw_text_ex(
+                "CHOOSE GAME MODE",
+                screen_width() / 2. - 120.,
+                screen_height() / 2. - 50.,
+                TextParams { font_size: 24, color: GRAY, ..Default::default() }
+            );
+            
+            draw_text_ex(
+                "Press 1 - HUMAN vs HUMAN",
+                screen_width() / 2. - 130.,
+                screen_height() / 2.,
+                TextParams { font_size: 20, color: Color::new(0.8, 0.8, 0.8, 1.0), ..Default::default() }
+            );
+            
+            draw_text_ex(
+                "Press 2 - HUMAN vs AI",
+                screen_width() / 2. - 130.,
+                screen_height() / 2. + 40.,
+                TextParams { font_size: 20, color: Color::new(0.8, 0.8, 0.8, 1.0), ..Default::default() }
+            );
+            
+            draw_text_ex(
+                "Esc - Quit",
+                screen_width() / 2. - 50.,
+                screen_height() / 2. + 100.,
+                TextParams { font_size: 16, color: GRAY, ..Default::default() }
+            );
+            
+            if is_key_pressed(KeyCode::Key1) {
+                game_mode = Some(GameMode::HumanVsHuman);
+            } else if is_key_pressed(KeyCode::Key2) {
+                game_mode = Some(GameMode::HumanVsAI);
+            } else if is_key_pressed(KeyCode::Escape) {
+                break;
+            }
+            
+            next_frame().await;
+            continue;
+        }
+        
+        // === ОСНОВНОЙ ЦИКЛ ИГРЫ ===
+        
         // Переключение полноэкранного режима
         if is_key_pressed(KeyCode::F11) {
             is_fullscreen = !is_fullscreen;
@@ -74,10 +140,28 @@ async fn main() {
         
         // === Управление ===
         if score.winner().is_none() {
+            // Левый игрок всегда человек
             if is_key_down(KeyCode::W) { left_y += 7.; }
             if is_key_down(KeyCode::S) { left_y -= 7.; }
-            if is_key_down(KeyCode::Up) { right_y += 7.; }
-            if is_key_down(KeyCode::Down) { right_y -= 7.; }
+            
+            // Правый игрок зависит от режима
+            match game_mode.unwrap() {
+                GameMode::HumanVsHuman => {
+                    if is_key_down(KeyCode::Up) { right_y += 7.; }
+                    if is_key_down(KeyCode::Down) { right_y -= 7.; }
+                }
+                GameMode::HumanVsAI => {
+                    // ИИ предсказывает траекторию и двигает ракетку
+                    let predicted_y = predict_ball_y(
+                        ball_x,
+                        ball_y,
+                        ball_dx,
+                        ball_dy,
+                        WINDOW_W - 50.  // X-позиция правой ракетки
+                    );
+                    update_ai_paddle(&mut right_y, predicted_y, 6.0);
+                }
+            }
             
             left_y = left_y.clamp(0., WINDOW_H - PADDLE_H);
             right_y = right_y.clamp(0., WINDOW_H - PADDLE_H);
@@ -155,6 +239,18 @@ async fn main() {
         draw_text_ex("LEFT", 60.0, 20.0, TextParams { font_size: 18, color: RED, ..Default::default() });
         draw_text_ex("RIGHT", screen_width() - 120.0, 20.0, TextParams { font_size: 18, color: BLUE, ..Default::default() });
         
+        // Индикатор режима игры
+        let mode_text = match game_mode.unwrap() {
+            GameMode::HumanVsHuman => "HUMAN vs HUMAN",
+            GameMode::HumanVsAI => "HUMAN vs AI",
+        };
+        draw_text_ex(
+            mode_text,
+            screen_width() / 2. - 60.0,
+            70.0,
+            TextParams { font_size: 14, color: Color::new(0.7, 0.7, 0.7, 0.8), ..Default::default() }
+        );
+        
         // Победа
         if let Some(winner_msg) = score.winner() {
             draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::new(0.0, 0.0, 0.0, 0.7));
@@ -167,7 +263,18 @@ async fn main() {
                 "Press SPACE to restart", screen_width() / 2.0 - 80.0, 
                 screen_height() / 2.0 + 15.0, 
                 TextParams { font_size: 18, color: WHITE, ..Default::default() });
+            draw_text_ex(
+                "Press R to change mode", screen_width() / 2.0 - 80.0, 
+                screen_height() / 2.0 + 40.0, 
+                TextParams { font_size: 18, color: GRAY, ..Default::default() });
+            
             if is_key_pressed(KeyCode::Space) {
+                score = Score::new();
+                reset_ball(&mut ball_x, &mut ball_y, &mut ball_dx, &mut ball_dy, 1., frame_counter);
+            }
+            if is_key_pressed(KeyCode::R) {
+                // Возврат к выбору режима
+                game_mode = None;
                 score = Score::new();
                 reset_ball(&mut ball_x, &mut ball_y, &mut ball_dx, &mut ball_dy, 1., frame_counter);
             }
@@ -175,17 +282,26 @@ async fn main() {
         
         // Подсказки + индикатор режима
         if score.winner().is_none() {
-            draw_text_ex("W/S — Left | ↑/↓ — Right | Esc — Quit | F11 — Fullscreen", 
-                        10.0,
-                        screen_height() - 25.0, 
-                        TextParams { font_size: 14, color: GRAY, ..Default::default() });
+            let controls_text = match game_mode.unwrap() {
+                GameMode::HumanVsHuman => "W/S - Left | Up/Down - Right",
+                GameMode::HumanVsAI => "W/S - Left | AI - Right",
+            };
             
-            // Индикатор режима
-            let mode_text = if is_fullscreen { "FULLSCREEN" } else { "WINDOWED" };
-            draw_text_ex(mode_text, 
+            draw_text_ex(
+                &format!("{} | Esc - Quit | F11 - Fullscreen", controls_text), 
+                10.0,
+                screen_height() - 25.0, 
+                TextParams { font_size: 14, color: GRAY, ..Default::default() }
+            );
+            
+            // Индикатор полноэкранного режима
+            let fs_text = if is_fullscreen { "FULLSCREEN" } else { "WINDOWED" };
+            draw_text_ex(
+                fs_text, 
                 screen_width() - 180.0, 
                 screen_height() - 20.0, 
-                TextParams { font_size: 14, color: Color::new(0.7, 0.7, 1.0, 0.8), ..Default::default() });
+                TextParams { font_size: 14, color: Color::new(0.7, 0.7, 1.0, 0.8), ..Default::default() }
+            );
         }
         
         if is_key_pressed(KeyCode::Escape) { break; }

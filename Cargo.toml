@@ -9,3 +9,6 @@ macroquad = "0.4"
 [features]
 default = ["audio"]
 audio = ["macroquad/audio"]
+
+[package.metadata.macroquad]
+high_dpi = false
